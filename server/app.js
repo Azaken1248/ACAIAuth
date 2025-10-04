@@ -5,6 +5,10 @@ import cors from 'cors'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
 import path from 'path'
+import dotenv from 'dotenv'
+
+
+dotenv.config();
 
 const app = express()
 const PORT = process.env.PORT || 3000
