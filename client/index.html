@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACAI Auth Token Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { color-scheme: dark; }
+    </style>
+</head>
+<body class="h-full text-gray-200">
+    <div class="min-h-screen flex items-center justify-center px-6">
+        <div class="w-full max-w-xl">
+            <h1 class="text-4xl font-extrabold mb-2">Generate CAI Auth Token</h1>
+            <p class="text-gray-400 mb-8">Fill in the email address associated with your CAI account. Then click on the link sent to the mail from CAI</p>
+
+            <div class="bg-gray-800 border border-gray-700 rounded-xl p-6">
+                <label class="block text-gray-300 text-sm mb-3">CAI Email</label>
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-6">
+                    <input id="email" type="email" placeholder="you@cai.example" class="flex-1 bg-gray-900 text-gray-100 placeholder-gray-500 px-4 py-3 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" />
+                    <button id="generate" class="w-full sm:w-auto bg-transparent text-blue-400 border border-blue-500 px-4 py-2 rounded-lg hover:bg-blue-500/10 flex items-center gap-2 justify-center">
+                        <svg class="spinner hidden animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                        </svg>
+                        <span class="btn-text">Generate token</span>
+                    </button>
+                </div>
+
+                <label class="block text-gray-300 text-sm mb-3">Generated token</label>
+                <div class="relative">
+                    <input id="token" type="text" readonly class="w-full bg-gray-900 text-blue-300 placeholder-gray-600 pr-10 pl-3 py-2 sm:px-4 sm:py-3 rounded-lg border border-gray-700 focus:outline-none text-sm sm:text-base" />
+                    <button id="copy" aria-label="Copy token" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-gray-400 hover:text-blue-300 disabled:opacity-50">
+                        <svg id="copyIcon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+                            <rect x="8" y="3" width="13" height="13" rx="2" ry="2" stroke-width="1.5" />
+                        </svg>
+                    </button>
+                </div>
+
+                <p id="msg" class="text-sm text-gray-500 mt-4"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const emailEl = document.getElementById('email')
+    const tokenEl = document.getElementById('token')
+    const btn = document.getElementById('generate')
+    const spinner = btn.querySelector('.spinner')
+    const btnText = btn.querySelector('.btn-text')
+    const msg = document.getElementById('msg')
+
+    function validEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    }
+
+    async function postGenerate(email) {
+        const res = await fetch('http://localhost:3000/api/generate_token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        })
+        if (!res.ok) throw new Error((await res.json()).error || 'Request failed')
+        return res.json()
+    }
+
+    async function pollJob(jobId) {
+        const res = await fetch(`http://localhost:3000/api/job/${jobId}`)
+        if (!res.ok) throw new Error('Job not found')
+        return res.json()
+    }
+    const copyBtn = document.getElementById('copy')
+    const copyIcon = document.getElementById('copyIcon')
+    copyBtn.disabled = true
+    async function showCopiedState(){
+        const old = copyIcon.outerHTML
+        copyIcon.outerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/></svg>'
+        const prevMsg = msg.textContent
+        msg.textContent = 'Copied to clipboard'
+        await new Promise(r => setTimeout(r, 1500))
+        try { copyBtn.replaceChildren(); copyBtn.appendChild((new DOMParser()).parseFromString(old, 'image/svg+xml').documentElement) } catch(e){}
+        msg.textContent = prevMsg
+    }
+    copyBtn.addEventListener('click', async () => {
+        if (!tokenEl.value) return
+        try { await navigator.clipboard.writeText(tokenEl.value); await showCopiedState() } catch (e) { msg.textContent = 'Copy failed' }
+    })
+
+    const POLL_TIMEOUT = 240000
+
+    async function startAndPoll(email){
+        const { jobId } = await postGenerate(email)
+        localStorage.setItem('cai_jobId', jobId)
+        await doPollLoop(jobId)
+    }
+
+    async function doPollLoop(jobId){
+        let done = false
+        const start = Date.now()
+        while (!done && Date.now() - start < POLL_TIMEOUT) {
+            await new Promise(r => setTimeout(r, 1500))
+            const status = await pollJob(jobId)
+            msg.textContent = status.message || ''
+            if (status.status === 'done' && status.token) {
+                tokenEl.value = status.token
+                copyBtn.disabled = false
+                localStorage.removeItem('cai_jobId')
+                done = true
+                break
+            }
+            if (status.status === 'error') {
+                msg.textContent = status.message || 'Generation failed'
+                localStorage.removeItem('cai_jobId')
+                done = true
+                break
+            }
+        }
+        if (!tokenEl.value && !msg.textContent) msg.textContent = 'Timed out waiting for magic link click.'
+    }
+
+    btn.addEventListener('click', async () => {
+        const email = emailEl.value.trim()
+        if (!validEmail(email)) {
+            msg.textContent = 'Please enter a valid CAI email.'
+            tokenEl.value = ''
+            return
+        }
+        msg.textContent = ''
+        btn.disabled = true
+        const prev = btn.textContent
+        if (btnText) btnText.textContent = 'Generating...'
+        if (spinner) spinner.classList.remove('hidden')
+        try {
+            await startAndPoll(email)
+        } catch (e) {
+            tokenEl.value = ''
+            msg.textContent = e.message
+        } finally {
+            btn.disabled = false
+            if (btnText) btnText.textContent = 'Generate token'
+            if (spinner) spinner.classList.add('hidden')
+        }
+    })
+
+    window.addEventListener('load', async () => {
+        const stored = localStorage.getItem('cai_jobId')
+        if (stored) {
+            msg.textContent = 'Resuming previous job...'
+            try { await doPollLoop(stored) } catch (e) { msg.textContent = e.message }
+        }
+    })
+    </script>
+</body>
+</html>
