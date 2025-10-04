@@ -63,6 +63,10 @@ for (const [id, job] of jobs.entries()){
     }
 }
 
+app.get("/", (_req, res) => {
+    res.send("Character.AI Token Generation Service is running.");
+});
+
 app.post('/api/generate_token', (req, res) => {
     const { email } = req.body
     if (!email) return res.status(400).json({ error: 'email is required' })
