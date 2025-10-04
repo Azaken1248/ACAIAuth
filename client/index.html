@@ -57,7 +57,7 @@
     }
 
     async function postGenerate(email) {
-        const res = await fetch('http://localhost:3000/api/generate_token', {
+        const res = await fetch('https://auth.acai.azaken.com/api/generate_token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
@@ -67,7 +67,7 @@
     }
 
     async function pollJob(jobId) {
-        const res = await fetch(`http://localhost:3000/api/job/${jobId}`)
+        const res = await fetch(`https://auth.acai.azaken.com/api/job/${jobId}`)
         if (!res.ok) throw new Error('Job not found')
         return res.json()
     }
